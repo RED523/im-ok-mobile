@@ -9,6 +9,7 @@ import {
   ScrollView,
   Dimensions,
   Platform,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,8 +29,13 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
   const [endTime, setEndTime] = useState('08:00');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [timeValidationError, setTimeValidationError] = useState<string>('');
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [activeTimePicker, setActiveTimePicker] = useState<'start' | 'end'>('start');
+  const [tempTime, setTempTime] = useState<Date>(new Date());
+  const [userPhoneError, setUserPhoneError] = useState<string>('');
+  const [emergencyContactError, setEmergencyContactError] = useState<string>('');
+  const [isUserPhoneFormatError, setIsUserPhoneFormatError] = useState<boolean>(false);
+  const [isEmergencyContactFormatError, setIsEmergencyContactFormatError] = useState<boolean>(false);
 
   // 当时间变化时，自动更新校验状态
   useEffect(() => {
@@ -58,33 +64,39 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
       case 0:
         return true;
       case 1:
-        return userPhone.length === 11;
+        return validatePhoneNumber(userPhone).valid;
       case 2:
         return isTimeRangeValid();
       case 3:
-        return emergencyContact.length === 11;
+        return validatePhoneNumber(emergencyContact).valid;
       default:
         return false;
     }
   };
 
-  const handleTimeChange = (type: 'start' | 'end', selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowStartTimePicker(false);
-      setShowEndTimePicker(false);
+  // 验证手机号码格式
+  const validatePhoneNumber = (phone: string): { 
+    valid: boolean; 
+    error?: string; 
+    isFormatError?: boolean; // 是否是格式错误（需要显示红色边框）
+  } => {
+    if (!phone) {
+      return { valid: false, error: '请输入手机号码', isFormatError: false };
     }
     
-    if (selectedDate) {
-      const hours = selectedDate.getHours().toString().padStart(2, '0');
-      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
-      const timeString = `${hours}:${minutes}`;
-      
-      if (type === 'start') {
-        setStartTime(timeString);
-      } else {
-        setEndTime(timeString);
-      }
+    if (phone.length !== 11) {
+      // 长度不够，不算格式错误，只是提示
+      return { valid: false, error: '请输入11位手机号码', isFormatError: false };
     }
+    
+    // 中国手机号码规则：第一位必须是1，第二位通常是3-9
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    if (!phoneRegex.test(phone)) {
+      // 格式错误，需要显示红色边框
+      return { valid: false, error: '请输入正确的手机号码格式（以1开头，第二位为3-9）', isFormatError: true };
+    }
+    
+    return { valid: true };
   };
 
   const getDateFromTime = (timeString: string) => {
@@ -92,7 +104,62 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
     const date = new Date();
     date.setHours(hours);
     date.setMinutes(minutes);
+    date.setSeconds(0);
+    date.setMilliseconds(0);
     return date;
+  };
+
+  const openTimePicker = (type: 'start' | 'end') => {
+    setActiveTimePicker(type);
+    setTempTime(getDateFromTime(type === 'start' ? startTime : endTime));
+    setShowTimePicker(true);
+  };
+
+  const handleTimePickerChange = (event: any, selectedDate?: Date) => {
+    console.log('Platform.OS', Platform.OS);
+    
+    if (Platform.OS === 'android') {
+      if (event.type === 'dismissed') {
+        setShowTimePicker(false);
+        return;
+      }
+      if (event.type === 'set' && selectedDate) {
+        // Android: 直接确认
+        const hours = selectedDate.getHours().toString().padStart(2, '0');
+        const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+        const timeString = `${hours}:${minutes}`;
+        if (activeTimePicker === 'start') {
+          setStartTime(timeString);
+        } else {
+          setEndTime(timeString);
+        }
+        setShowTimePicker(false);
+      }
+    } else {
+      // iOS: 更新临时值，等待确认
+      if (selectedDate) {
+        setTempTime(selectedDate);
+      }
+    }
+  };
+
+  const confirmTimePicker = () => {
+    
+    const hours = tempTime.getHours().toString().padStart(2, '0');
+    const minutes = tempTime.getMinutes().toString().padStart(2, '0');
+    const timeString = `${hours}:${minutes}`;
+    console.log('设置的时间段：===========>', timeString);
+    
+    if (activeTimePicker === 'start') {
+      setStartTime(timeString);
+    } else {
+      setEndTime(timeString);
+    }
+    setShowTimePicker(false);
+  };
+
+  const cancelTimePicker = () => {
+    setShowTimePicker(false);
   };
 
 
@@ -160,16 +227,31 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
               <Text style={styles.stepTitle}>输入你的手机号</Text>
               <Text style={styles.stepDescription}>用于接收安全提醒通知</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  isUserPhoneFormatError && styles.inputError
+                ]}
                 value={userPhone}
-                onChangeText={(text) => setUserPhone(text.replace(/\D/g, '').slice(0, 11))}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/\D/g, '').slice(0, 11);
+                  setUserPhone(cleaned);
+                  // 实时验证
+                  if (cleaned.length > 0) {
+                    const validation = validatePhoneNumber(cleaned);
+                    setUserPhoneError(validation.error || '');
+                    setIsUserPhoneFormatError(validation.isFormatError || false);
+                  } else {
+                    setUserPhoneError('');
+                    setIsUserPhoneFormatError(false);
+                  }
+                }}
                 placeholder="输入手机号码"
                 keyboardType="phone-pad"
                 maxLength={11}
                 autoFocus
               />
-              {userPhone.length > 0 && userPhone.length !== 11 && (
-                <Text style={styles.errorText}>请输入11位手机号码</Text>
+              {userPhoneError && (
+                <Text style={styles.errorText}>{userPhoneError}</Text>
               )}
             </View>
           )}
@@ -183,7 +265,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
               <View style={styles.timePickerContainer}>
                 <TouchableOpacity 
                   style={styles.timePickerRow}
-                  onPress={() => setShowStartTimePicker(true)}
+                  onPress={() => openTimePicker('start')}
+                  activeOpacity={0.7}
                 >
                   <View>
                     <Text style={styles.timeLabel}>开始时间</Text>
@@ -197,7 +280,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
                 <View style={styles.timeSeparator} />
                 <TouchableOpacity 
                   style={styles.timePickerRow}
-                  onPress={() => setShowEndTimePicker(true)}
+                  onPress={() => openTimePicker('end')}
+                  activeOpacity={0.7}
                 >
                   <View>
                     <Text style={styles.timeLabel}>结束时间</Text>
@@ -222,42 +306,51 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
                   </Text>
                 </View>
               )}
-              {showStartTimePicker && (
-                <DateTimePicker
-                  value={getDateFromTime(startTime)}
-                  mode="time"
-                  is24Hour={true}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event: any, date?: Date) => {
-                    if (Platform.OS === 'android') {
-                      setShowStartTimePicker(false);
-                    }
-                    if (event.type === 'set' && date) {
-                      handleTimeChange('start', date);
-                    } else if (event.type === 'dismissed') {
-                      setShowStartTimePicker(false);
-                    }
-                  }}
-                />
-              )}
-              {showEndTimePicker && (
-                <DateTimePicker
-                  value={getDateFromTime(endTime)}
-                  mode="time"
-                  is24Hour={true}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event: any, date?: Date) => {
-                    if (Platform.OS === 'android') {
-                      setShowEndTimePicker(false);
-                    }
-                    if (event.type === 'set' && date) {
-                      handleTimeChange('end', date);
-                    } else if (event.type === 'dismissed') {
-                      setShowEndTimePicker(false);
-                    }
-                  }}
-                />
-              )}
+
+              {/* 时间选择器 Modal */}
+              <Modal
+                visible={showTimePicker}
+                transparent
+                animationType="slide"
+                onRequestClose={cancelTimePicker}
+              >
+                <TouchableOpacity 
+                  style={styles.modalOverlay}
+                  activeOpacity={1}
+                  onPress={cancelTimePicker}
+                >
+                  <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={styles.timePickerModal}
+                    onPress={(e) => e.stopPropagation()}
+                  >
+                    {/* Modal Header */}
+                    <View style={styles.modalHeader}>
+                      <TouchableOpacity onPress={cancelTimePicker}>
+                        <Text style={styles.modalCancelText}>取消</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.modalTitle}>
+                        {activeTimePicker === 'start' ? '开始时间' : '结束时间'}
+                      </Text>
+                      <TouchableOpacity onPress={confirmTimePicker}>
+                        <Text style={styles.modalConfirmText}>确定</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Time Picker */}
+                    <View style={styles.pickerWrapper}>
+                      <DateTimePicker
+                        value={tempTime}
+                        mode="time"
+                        is24Hour={true}
+                        display="spinner"
+                        onChange={handleTimePickerChange}
+                        style={styles.timePicker}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </Modal>
             </View>
           )}
 
@@ -266,18 +359,31 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
               <Text style={styles.stepTitle}>添加信任联系人</Text>
               <Text style={styles.stepDescription}>仅在异常情况下通知此联系人</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  isEmergencyContactFormatError && styles.inputError
+                ]}
                 value={emergencyContact}
-                onChangeText={(text) =>
-                  setEmergencyContact(text.replace(/\D/g, '').slice(0, 11))
-                }
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/\D/g, '').slice(0, 11);
+                  setEmergencyContact(cleaned);
+                  // 实时验证
+                  if (cleaned.length > 0) {
+                    const validation = validatePhoneNumber(cleaned);
+                    setEmergencyContactError(validation.error || '');
+                    setIsEmergencyContactFormatError(validation.isFormatError || false);
+                  } else {
+                    setEmergencyContactError('');
+                    setIsEmergencyContactFormatError(false);
+                  }
+                }}
                 placeholder="输入联系人手机号"
                 keyboardType="phone-pad"
                 maxLength={11}
                 autoFocus
               />
-              {emergencyContact.length > 0 && emergencyContact.length !== 11 && (
-                <Text style={styles.errorText}>请输入11位手机号码</Text>
+              {emergencyContactError && (
+                <Text style={styles.errorText}>{emergencyContactError}</Text>
               )}
               <View style={[styles.infoBox, styles.warningBox]}>
                 <Ionicons name="information-circle-outline" size={20} color="#f59e0b" />
@@ -296,7 +402,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
           disabled={!canProceed()}
         >
           <Text style={styles.buttonText}>
-            {step === 3 ? '完成设置' : '继续 >'} 
+            {step === 3 ? '完成设置' : '继续'} 
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -410,9 +516,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 16,
   },
+  inputError: {
+    borderColor: '#ef4444',
+  },
   errorText: {
     fontSize: 14,
-    color: '#f97316',
+    color: '#ef4444',
     marginTop: -8,
     marginBottom: 16,
   },
@@ -494,6 +603,53 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Modal 样式
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  timePickerModal: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: '#64748b',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3b82f6',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  pickerWrapper: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  timePicker: {
+    width: width - 40,
+    height: 200,
   },
 });
 

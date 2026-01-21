@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import monitoringService from '../services/monitoringService';
@@ -20,6 +21,51 @@ export default function HomeScreen({ settings, onSettings }: HomeScreenProps) {
   const [status, setStatus] = useState<'abnormal' | 'monitoring'>('monitoring');
   const [lastCheckTime, setLastCheckTime] = useState<string>('');
   const [isInPeriod, setIsInPeriod] = useState(false);
+
+  // 水波动效动画值
+  const ripple1 = useRef(new Animated.Value(0)).current;
+  const ripple2 = useRef(new Animated.Value(0)).current;
+  const ripple3 = useRef(new Animated.Value(0)).current;
+
+  // 水波动效
+  useEffect(() => {
+    if (status === 'monitoring' && isInPeriod) {
+      const createRippleAnimation = (animatedValue: Animated.Value, delay: number) => {
+        return Animated.loop(
+          Animated.sequence([
+            Animated.delay(delay),
+            Animated.timing(animatedValue, {
+              toValue: 1,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(animatedValue, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+      };
+
+      const anim1 = createRippleAnimation(ripple1, 0);
+      const anim2 = createRippleAnimation(ripple2, 666);
+      const anim3 = createRippleAnimation(ripple3, 1333);
+
+      anim1.start();
+      anim2.start();
+      anim3.start();
+
+      return () => {
+        anim1.stop();
+        anim2.stop();
+        anim3.stop();
+        ripple1.setValue(0);
+        ripple2.setValue(0);
+        ripple3.setValue(0);
+      };
+    }
+  }, [status, isInPeriod, ripple1, ripple2, ripple3]);
 
   // 监测逻辑 - 只有两个状态：监测中 和 异常
   useEffect(() => {
@@ -107,17 +153,81 @@ export default function HomeScreen({ settings, onSettings }: HomeScreenProps) {
         {/* Status Card */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
-            <View
-              style={[
-                styles.statusIconContainer,
-                status === 'abnormal' && styles.statusIconContainerAbnormal,
-              ]}
-            >
-              <Ionicons 
-                name={status === 'abnormal' ? 'warning' : 'shield-checkmark'} 
-                size={36} 
-                color={status === 'abnormal' ? '#ef4444' : '#3b82f6'} 
-              />
+            <View style={styles.statusIconWrapper}>
+              {/* 水波动效 - 仅在监测时段内显示 */}
+              {status === 'monitoring' && isInPeriod && (
+                <>
+                  <Animated.View
+                    style={[
+                      styles.ripple,
+                      {
+                        opacity: ripple1.interpolate({
+                          inputRange: [0, 0.6, 1],
+                          outputRange: [0.9, 0.4, 0],
+                        }),
+                        transform: [
+                          {
+                            scale: ripple1.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.4, 1.2],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.ripple,
+                      {
+                        opacity: ripple2.interpolate({
+                          inputRange: [0, 0.6, 1],
+                          outputRange: [0.9, 0.4, 0],
+                        }),
+                        transform: [
+                          {
+                            scale: ripple2.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.4, 1.2],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.ripple,
+                      {
+                        opacity: ripple3.interpolate({
+                          inputRange: [0, 0.6, 1],
+                          outputRange: [0.9, 0.4, 0],
+                        }),
+                        transform: [
+                          {
+                            scale: ripple3.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.4, 1.2],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                </>
+              )}
+              <View
+                style={[
+                  styles.statusIconContainer,
+                  status === 'abnormal' && styles.statusIconContainerAbnormal,
+                ]}
+              >
+                <Ionicons 
+                  name={status === 'abnormal' ? 'warning' : 'shield-checkmark'} 
+                  size={36} 
+                  color={status === 'abnormal' ? '#ef4444' : '#3b82f6'} 
+                />
+              </View>
             </View>
             <View style={styles.statusTextContainer}>
               <Text style={styles.statusTitle}>
@@ -138,7 +248,7 @@ export default function HomeScreen({ settings, onSettings }: HomeScreenProps) {
               <Text style={styles.statusInfoText}>
                 {isInPeriod
                   ? '正在监测中。系统会在后台自动记录你的使用行为，时段结束后将进行检查。'
-                  : '守护功能已启动。在监测时段内，系统会自动检测你的安全状态。'}
+                  : '守护功能已启动。如在监测时段内，系统会自动检测你的安全状态。'}
               </Text>
             </View>
           )}
@@ -178,9 +288,9 @@ export default function HomeScreen({ settings, onSettings }: HomeScreenProps) {
         {/* Info Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            本产品不提供医疗或紧急救援服务，仅作为安全提醒工具。
+            本产品不提供医疗或紧急救援服务，仅作为安全提醒工具
             {'\n'}
-            不保证100%监测成功，请根据实际情况使用。
+            不保证100%监测成功，请根据实际情况使用
           </Text>
         </View>
       </ScrollView>
@@ -236,6 +346,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  statusIconWrapper: {
+    width: 72,
+    height: 72,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ripple: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#60a5fa',
+  },
   statusIconContainer: {
     width: 72,
     height: 72,
@@ -243,7 +369,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0f2fe',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
   statusIconContainerAbnormal: {
     backgroundColor: '#fecaca',

@@ -54,6 +54,9 @@ class MonitoringService {
           this.scheduledNotificationId = null;
           console.log('🚫 已取消定时通知（用户有活动）');
         }
+        
+        // 清除待处理的异常提醒（因为用户有活动，通知不需要了）
+        await this.clearPendingAbnormalAlert();
       }
     }
   }
@@ -177,6 +180,10 @@ class MonitoringService {
     await storage.removeItem('notificationSentToday');
     await storage.removeItem('notificationSentTime');
     await storage.removeItem('scheduledNotificationTime');
+    
+    // 清除待处理的异常提醒状态
+    await this.clearPendingAbnormalAlert();
+    
     console.log('=====================================================');
     console.log('  🗑️ 已清除通知发送标记和时间戳');
     
@@ -225,11 +232,13 @@ class MonitoringService {
     if (startMinutes > endMinutes) {
       // 跨夜
       duration = (24 * 60 - startMinutes) + endMinutes;
+      console.log('跨夜时长：===========>', `${duration} 分钟`);
     } else {
       duration = endMinutes - startMinutes;
-    }
+      console.log('不跨夜时长：===========>', `${duration} 分钟`);
+    }    
 
-    // 【测试模式】暂时注释 6 小时限制，方便测试
+    // TODO:【测试模式】暂时注释 6 小时限制，方便测试(后面会放开)
     // if (duration < 6 * 60) {
     //   return {
     //     valid: false,
@@ -343,16 +352,53 @@ class MonitoringService {
     }
 
     let record = await this.getTodayRecord();
+    const now = new Date();
+    const today = this.getTodayDateKey();
+    const isInPeriod = this.isInMonitoringPeriod(now, settings);
+    
+    // 【关键】首先检查是否有待处理的异常提醒（后台通知场景）
+    // 这是为了处理应用在后台或被杀死时，定时通知已发送的情况
+    const hasPendingAlert = await this.hasPendingAbnormalAlertToShow();
+    if (hasPendingAlert) {
+      console.log('  ⚠️ 检测到待处理的异常提醒（后台通知已触发）');
+      
+      // 确保记录存在并标记为异常
+      if (!record) {
+        record = this.createRecord(today, settings);
+        record.isAbnormal = true;
+        record.hasUsage = false;
+        await this.saveRecord(record);
+        console.log('  📝 已创建异常记录');
+      } else if (!record.isAbnormal && !record.hasUsage && !record.userConfirmed) {
+        record.isAbnormal = true;
+        await this.saveRecord(record);
+        console.log('  📝 已标记为异常');
+      }
+      
+      // 如果用户已确认或有使用记录，不显示弹框
+      if (record.userConfirmed) {
+        console.log('  ✅ 用户已确认，不需要显示弹框');
+        return false;
+      }
+      if (record.hasUsage) {
+        console.log('  ✅ 有使用记录，不需要显示弹框');
+        return false;
+      }
+      
+      // 确保有通知时间戳
+      await this.ensureNotificationTimeExists(settings);
+      
+      // 同时设置 notificationSentToday 标记，确保状态一致
+      await storage.setItem('notificationSentToday', today);
+      
+      return true;
+    }
     
     // 如果记录不存在，但时段已结束，可能需要创建记录
     if (!record) {
-      const now = new Date();
-      const isInPeriod = this.isInMonitoringPeriod(now, settings);
-      
       // 如果不在监测时段内（时段已结束），创建记录并标记为异常
       if (!isInPeriod) {
         console.log('  ⚠️ 未找到今日记录，但时段已结束，创建异常记录');
-        const today = this.getTodayDateKey();
         record = this.createRecord(today, settings);
         record.isAbnormal = true;
         record.hasUsage = false;
@@ -388,13 +434,8 @@ class MonitoringService {
       return false;
     }
 
-    // 检查监测时段是否已经结束
-    const now = new Date();
-    const isInPeriod = this.isInMonitoringPeriod(now, settings);
-    
     // 检查今天是否已经发送过通知
     const notificationSentDate = await storage.getItem<string>('notificationSentToday');
-    const today = this.getTodayDateKey();
     const notificationSentToday = notificationSentDate === today;
     
     console.log('  ⏰ 时间检查:', {
@@ -574,6 +615,9 @@ class MonitoringService {
       await this.saveRecord(record);
       console.log('✅ 用户确认安全');
     }
+    
+    // 【关键】标记待处理的异常提醒为已处理
+    await this.markPendingAbnormalAlertAsHandled();
   }
 
   /**
@@ -692,6 +736,10 @@ class MonitoringService {
         await storage.setItem('scheduledNotificationTime', endDate.getTime().toString());
         console.log(`  ⏰ 保存预期通知时间: ${endDate.toLocaleTimeString()}（用于后台场景）`);
         console.log(`  📊 详细信息: 时间戳=${endDate.getTime()}, 完整时间=${endDate.toLocaleString()}, 日期=${endDate.toLocaleDateString()}`);
+        
+        // 【关键】保存待处理的异常提醒状态
+        // 当通知发送时，无论应用是否在前台，都能检测到需要显示弹框
+        await this.savePendingAbnormalAlert(endDate.getTime(), today);
       } else if (existingScheduledTime) {
         const existingDate = new Date(parseInt(existingScheduledTime));
         console.log(`  ℹ️ 预期通知时间已存在: ${existingDate.toLocaleTimeString()}, 不需要更新`);
@@ -711,6 +759,88 @@ class MonitoringService {
       this.scheduledNotificationId = notificationId;
       console.log(`  📅 已设置定时通知: ${Math.floor(secondsUntilEnd / 60)}分钟后发送`);
     }
+  }
+
+  // ============ 待处理异常提醒状态管理 ============
+
+  /**
+   * 保存待处理的异常提醒状态
+   * 当定时通知被设置时调用，记录通知预计发送时间
+   */
+  private async savePendingAbnormalAlert(scheduledTime: number, dateKey: string): Promise<void> {
+    const pendingAlert = {
+      scheduledTime,
+      dateKey,
+      handled: false, // 用户是否已处理
+    };
+    await storage.setItem('pendingAbnormalAlert', pendingAlert);
+    console.log(`  📌 已保存待处理异常提醒: 预计 ${new Date(scheduledTime).toLocaleTimeString()} 触发`);
+  }
+
+  /**
+   * 检查是否有待处理的异常提醒需要显示
+   * 当应用激活时调用，检查通知是否已经发送（时间已过）
+   */
+  async hasPendingAbnormalAlertToShow(): Promise<boolean> {
+    const pendingAlert = await storage.getItem<{
+      scheduledTime: number;
+      dateKey: string;
+      handled: boolean;
+    }>('pendingAbnormalAlert');
+
+    if (!pendingAlert) {
+      return false;
+    }
+
+    const now = Date.now();
+    const today = this.getTodayDateKey();
+
+    // 检查是否是今天的提醒
+    if (pendingAlert.dateKey !== today) {
+      console.log('  ℹ️ 待处理提醒不是今天的，清除');
+      await storage.removeItem('pendingAbnormalAlert');
+      return false;
+    }
+
+    // 检查用户是否已处理
+    if (pendingAlert.handled) {
+      console.log('  ℹ️ 待处理提醒已被用户处理');
+      return false;
+    }
+
+    // 检查通知是否已经发送（当前时间已过预计发送时间）
+    if (now >= pendingAlert.scheduledTime) {
+      console.log(`  ⚠️ 检测到待处理的异常提醒: 通知应该已在 ${new Date(pendingAlert.scheduledTime).toLocaleTimeString()} 发送`);
+      return true;
+    }
+
+    console.log(`  ℹ️ 通知尚未发送（预计 ${new Date(pendingAlert.scheduledTime).toLocaleTimeString()}）`);
+    return false;
+  }
+
+  /**
+   * 标记待处理的异常提醒已被用户处理
+   */
+  async markPendingAbnormalAlertAsHandled(): Promise<void> {
+    const pendingAlert = await storage.getItem<{
+      scheduledTime: number;
+      dateKey: string;
+      handled: boolean;
+    }>('pendingAbnormalAlert');
+
+    if (pendingAlert) {
+      pendingAlert.handled = true;
+      await storage.setItem('pendingAbnormalAlert', pendingAlert);
+      console.log('  ✅ 已标记待处理异常提醒为已处理');
+    }
+  }
+
+  /**
+   * 清除待处理的异常提醒状态
+   */
+  async clearPendingAbnormalAlert(): Promise<void> {
+    await storage.removeItem('pendingAbnormalAlert');
+    console.log('  🗑️ 已清除待处理异常提醒');
   }
 
   /**
@@ -737,6 +867,7 @@ class MonitoringService {
     await storage.removeItem('notificationSentTime');
     await storage.removeItem('scheduledNotificationTime');
     await storage.removeItem('lastNotificationDate');
+    await storage.removeItem('pendingAbnormalAlert');
     
     // 取消所有通知
     await this.cancelScheduledNotification();

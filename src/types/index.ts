@@ -19,6 +19,13 @@ export interface MonitoringSettings {
   notificationDelay: number; // 延迟通知时间（秒），默认 300 秒（5分钟）
 }
 
+/**
+ * 用户设置
+ * @param userPhone 用户手机号码
+ * @param startTime 开始时间
+ * @param endTime 结束时间
+ * @param emergencyContact 紧急联系人
+ */
 export interface UserSettings {
   userPhone: string;
   startTime: string;

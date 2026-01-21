@@ -289,7 +289,7 @@ export default function App() {
       notificationTimerRef.current = null;
     }
 
-    // 记录用户确认
+    // 记录用户确认（内部会标记 pendingAbnormalAlert 为已处理）
     await monitoringService.confirmSafe();
     
     // 用户确认后，记录一次活动（表示用户现在有活动了）
@@ -300,7 +300,10 @@ export default function App() {
     await storage.removeItem('notificationSentTime');
     await storage.removeItem('scheduledNotificationTime');
     
-    console.log('✅ 用户确认安全后，已记录活动并清除通知标记');
+    // 清除待处理的异常提醒状态（确保完全清除）
+    await monitoringService.clearPendingAbnormalAlert();
+    
+    console.log('✅ 用户确认安全后，已记录活动并清除所有通知相关标记');
   };
 
   const handleCloseAlert = () => {
@@ -347,6 +350,7 @@ export default function App() {
     );
   }
 
+  // 设置页面
   if (showSettings) {
     return (
       <>
