@@ -73,6 +73,8 @@ class MonitoringService {
 
   /**
    * 判断当前是否在监测时间段内
+   * 注意：包含开始时间，不包含结束时间（左闭右开区间）
+   * 例如：22:00 - 22:11 表示 [22:00, 22:11)，即 22:00 在时段内，22:11 不在
    */
   isInMonitoringPeriod(date: Date, settings: MonitoringSettings): boolean {
     const currentTime = date.getHours() * 60 + date.getMinutes();
@@ -83,11 +85,13 @@ class MonitoringService {
 
     // 处理跨夜的情况
     if (startMinutes > endMinutes) {
-      // 跨夜：当前时间 >= 开始时间 或 当前时间 <= 结束时间
-      return currentTime >= startMinutes || currentTime <= endMinutes;
+      // 跨夜：当前时间 >= 开始时间 或 当前时间 < 结束时间
+      // 例如 23:00 - 08:00: [23:00, 23:59] 或 [00:00, 07:59]
+      return currentTime >= startMinutes || currentTime < endMinutes;
     } else {
-      // 不跨夜：当前时间在开始和结束之间
-      return currentTime >= startMinutes && currentTime <= endMinutes;
+      // 不跨夜：当前时间在开始和结束之间（左闭右开）
+      // 例如 22:00 - 22:11: [22:00, 22:10]
+      return currentTime >= startMinutes && currentTime < endMinutes;
     }
   }
 
@@ -204,7 +208,7 @@ class MonitoringService {
       startTime: saved.startTime,
       endTime: saved.endTime,
       emergencyContact: saved.emergencyContact,
-      notificationDelay: 300, // 默认 5 分钟
+      notificationDelay: 30, // 默认 30 秒（测试用）
     };
   }
 
@@ -394,24 +398,10 @@ class MonitoringService {
       return true;
     }
     
-    // 如果记录不存在，但时段已结束，可能需要创建记录
+    // 【关键修复】如果记录不存在，说明今天还没开始过监测，不应该判定为异常
+    // 只有在"有记录但无使用"的情况下才可能是异常
     if (!record) {
-      // 如果不在监测时段内（时段已结束），创建记录并标记为异常
-      if (!isInPeriod) {
-        console.log('  ⚠️ 未找到今日记录，但时段已结束，创建异常记录');
-        record = this.createRecord(today, settings);
-        record.isAbnormal = true;
-        record.hasUsage = false;
-        await this.saveRecord(record);
-        console.log('  📝 已创建异常记录');
-        
-        // 如果没有通知时间戳，使用监测时段结束时间作为基准
-        await this.ensureNotificationTimeExists(settings);
-        
-        return true;
-      }
-      
-      console.log('  ❌ 未找到今日记录，且时段未结束');
+      console.log('  ℹ️ 未找到今日记录，可能还未开始首次监测，不判定为异常');
       return false;
     }
 
@@ -463,7 +453,8 @@ class MonitoringService {
       return true;
     }
     
-    // 如果不在监测时段内，说明时段已经结束
+    // 如果有记录，且当前不在监测时段内，说明时段已经结束
+    // （因为记录是在进入时段时创建的）
     if (!isInPeriod) {
       // 时段已结束，且没有使用记录，且未确认，需要显示弹框
       console.log('  ⚠️ 检测到未处理的异常状态（时段已结束，无使用记录）');

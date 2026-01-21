@@ -134,7 +134,6 @@ export default function AbnormalAlertDialog({
         setCloseCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(closeTimer);
-            onClose(); // 只关闭弹框，不改变状态
             return 0;
           }
           return prev - 1;
@@ -143,7 +142,19 @@ export default function AbnormalAlertDialog({
 
       return () => clearInterval(closeTimer);
     }
-  }, [countdown, isOpen, onClose]);
+  }, [countdown, isOpen]);
+
+  // 当关闭倒计时为 0 时，关闭弹框
+  useEffect(() => {
+    if (closeCountdown === 0 && countdown === 0 && isOpen) {
+      // 使用 setTimeout 确保在下一个事件循环中执行，避免在渲染过程中更新状态
+      const timer = setTimeout(() => {
+        onClose();
+      }, 0);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [closeCountdown, countdown, isOpen, onClose]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

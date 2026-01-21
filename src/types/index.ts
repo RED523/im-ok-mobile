@@ -16,7 +16,7 @@ export interface MonitoringSettings {
   startTime: string;
   endTime: string;
   emergencyContact: string;
-  notificationDelay: number; // 延迟通知时间（秒），默认 300 秒（5分钟）
+  notificationDelay: number; // 延迟通知时间（秒），默认 30 秒（测试用）
 }
 
 /**

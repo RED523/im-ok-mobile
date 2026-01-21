@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -51,12 +51,18 @@ export default function App() {
               // 标记为异常，这样后续从应用图标进入时也能检测到
               await monitoringService.markTodayAsAbnormal();
               
-              // 【关键修复】在前台收到通知时，应该使用当前时间，而不是 notification.date
-              // 因为 notification.date 可能是通知被安排的时间，不是实际发送的时间
-              const notificationTime = Date.now();
-              await storage.setItem('notificationSentTime', notificationTime.toString());
-              await storage.setItem('notificationSentToday', new Date().toISOString().split('T')[0]);
-              console.log(`⏰ 保存通知时间（当前时间）: ${new Date(notificationTime).toLocaleTimeString()}`);
+              // 【关键修复】只在第一次收到通知时保存时间，避免重复触发时覆盖
+              const existingTime = await storage.getItem<string>('notificationSentTime');
+              if (!existingTime) {
+                // 在前台收到通知时，应该使用当前时间，而不是 notification.date
+                // 因为 notification.date 可能是通知被安排的时间，不是实际发送的时间
+                const notificationTime = Date.now();
+                await storage.setItem('notificationSentTime', notificationTime.toString());
+                await storage.setItem('notificationSentToday', new Date().toISOString().split('T')[0]);
+                console.log(`⏰ 保存通知时间（当前时间）: ${new Date(notificationTime).toLocaleTimeString()}`);
+              } else {
+                console.log(`  ℹ️ 通知时间已存在，不重复保存（避免覆盖原始时间）`);
+              }
               
               // 使用函数式更新，避免重复触发
               setShowAlert(prev => {
@@ -174,7 +180,7 @@ export default function App() {
     await storage.setItem('safetyMonitorSettings', newSettings);
     await monitoringService.saveSettings({
       ...newSettings,
-      notificationDelay: 300,
+      notificationDelay: 30,
     });
 
     // 重置今日记录（清除旧状态，重新开始）
@@ -280,7 +286,7 @@ export default function App() {
     }, monitorSettings.notificationDelay * 1000);
   };
 
-  const handleConfirmSafe = async () => {
+  const handleConfirmSafe = useCallback(async () => {
     setShowAlert(false);
 
     // 取消待发送的通知
@@ -304,13 +310,13 @@ export default function App() {
     await monitoringService.clearPendingAbnormalAlert();
     
     console.log('✅ 用户确认安全后，已记录活动并清除所有通知相关标记');
-  };
+  }, []);
 
-  const handleCloseAlert = () => {
+  const handleCloseAlert = useCallback(() => {
     // 纯粹关闭弹框，不改变任何状态（用于倒计时结束后自动关闭）
     setShowAlert(false);
     console.log('🔕 弹框已关闭（短信已发送）');
-  };
+  }, []);
 
   // 应用完全加载后，检查是否有未处理的异常
   // 确保从应用图标进入时也能显示弹框
