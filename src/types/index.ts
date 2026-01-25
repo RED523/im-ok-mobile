@@ -15,7 +15,8 @@ export interface MonitoringSettings {
   userPhone: string;
   startTime: string;
   endTime: string;
-  emergencyContact: string;
+  emergencyContact: string; // 紧急联系人手机号（短信功能，即将推出）
+  emergencyEmail: string; // 紧急联系人邮箱（当前使用）
   notificationDelay: number; // 延迟通知时间（秒），默认 30 秒（测试用）
 }
 
@@ -24,12 +25,14 @@ export interface MonitoringSettings {
  * @param userPhone 用户手机号码
  * @param startTime 开始时间
  * @param endTime 结束时间
- * @param emergencyContact 紧急联系人
+ * @param emergencyContact 紧急联系人手机号（短信功能，即将推出）
+ * @param emergencyEmail 紧急联系人邮箱（当前使用）
  */
 export interface UserSettings {
   userPhone: string;
   startTime: string;
   endTime: string;
-  emergencyContact: string;
+  emergencyContact: string; // 短信功能，即将推出
+  emergencyEmail: string; // 当前使用邮箱通知
 }
 

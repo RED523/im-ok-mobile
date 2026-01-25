@@ -33,7 +33,9 @@ export default function SettingsScreen({
 }: SettingsScreenProps) {
   const [editingStartTime, setEditingStartTime] = useState(settings.startTime);
   const [editingEndTime, setEditingEndTime] = useState(settings.endTime);
-  const [editingContact, setEditingContact] = useState(settings.emergencyContact);
+  const [editingContact, setEditingContact] = useState(settings.emergencyContact || ''); // 短信功能，即将推出
+  const [editingEmail, setEditingEmail] = useState(settings.emergencyEmail || ''); // 当前使用邮箱通知
+  const [emailError, setEmailError] = useState<string>('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [timeValidationError, setTimeValidationError] = useState<string>('');
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -44,10 +46,23 @@ export default function SettingsScreen({
     return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
   };
 
+  // 验证邮箱格式
+  const validateEmail = (email: string): { valid: boolean; error?: string } => {
+    if (!email) {
+      return { valid: false, error: '请输入邮箱地址' };
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return { valid: false, error: '请输入正确的邮箱格式' };
+    }
+    return { valid: true };
+  };
+
   const hasChanges =
     editingStartTime !== settings.startTime ||
     editingEndTime !== settings.endTime ||
-    editingContact !== settings.emergencyContact;
+    editingContact !== (settings.emergencyContact || '') ||
+    editingEmail !== (settings.emergencyEmail || '');
 
   // 当时间变化时校验
   useEffect(() => {
@@ -62,7 +77,9 @@ export default function SettingsScreen({
   };
 
   const canSave = () => {
-    return hasChanges && isTimeRangeValid() && editingContact.length === 11;
+    // 邮箱是必填的（当前使用邮箱通知）
+    const emailValid = validateEmail(editingEmail).valid;
+    return hasChanges && isTimeRangeValid() && emailValid;
   };
 
   const handleSave = () => {
@@ -72,6 +89,7 @@ export default function SettingsScreen({
       startTime: editingStartTime,
       endTime: editingEndTime,
       emergencyContact: editingContact,
+      emergencyEmail: editingEmail,
     });
   };
 
@@ -257,26 +275,76 @@ export default function SettingsScreen({
           </Modal>
         </View>
 
-        {/* Emergency Contact */}
+        {/* Emergency Contact - Email (当前使用) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="notifications-outline" size={20} color="#3b82f6" />
+            <Ionicons name="mail-outline" size={20} color="#3b82f6" />
             <Text style={styles.sectionTitle}>信任联系人</Text>
           </View>
+          
+          {/* 邮箱输入（当前使用） */}
+          <View style={styles.inputSection}>
+            <View style={styles.inputLabelRow}>
+              <Text style={styles.inputLabel}>联系人邮箱</Text>
+              <View style={styles.currentBadge}>
+                <Text style={styles.currentBadgeText}>当前使用</Text>
+              </View>
+            </View>
+            <TextInput
+              style={[styles.input, emailError ? styles.inputError : null]}
+              value={editingEmail}
+              onChangeText={(text) => {
+                const cleaned = text.trim();
+                setEditingEmail(cleaned);
+                if (cleaned.length > 0) {
+                  const validation = validateEmail(cleaned);
+                  setEmailError(validation.error || '');
+                } else {
+                  setEmailError('');
+                }
+              }}
+              placeholder="输入联系人邮箱地址"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
+          </View>
+
+          <View style={[styles.hintBox, styles.infoBox]}>
+            <Ionicons name="information-circle-outline" size={16} color="#3b82f6" />
+            <Text style={styles.hintText}>
+              仅在检测到异常且你未确认安全时，才会向此邮箱发送通知
+            </Text>
+          </View>
+        </View>
+
+        {/* SMS Coming Soon */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="chatbubble-outline" size={20} color="#94a3b8" />
+            <Text style={styles.sectionTitleDisabled}>短信通知</Text>
+            <View style={styles.comingSoonBadge}>
+              <Text style={styles.comingSoonBadgeText}>即将推出</Text>
+            </View>
+          </View>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.inputDisabled]}
             value={editingContact}
             onChangeText={(text) =>
               setEditingContact(text.replace(/\D/g, '').slice(0, 11))
             }
-            placeholder="输入联系人手机号"
+            placeholder="输入联系人手机号（功能即将推出）"
             keyboardType="phone-pad"
             maxLength={11}
+            editable={false}
           />
-          <View style={[styles.hintBox, styles.warningBox]}>
-            <Ionicons name="information-circle-outline" size={16} color="#f59e0b" />
-            <Text style={styles.hintText}>
-              仅在检测到异常且你未确认安全时，才会通知此联系人
+          <View style={[styles.hintBox, styles.comingSoonHintBox]}>
+            <Ionicons name="time-outline" size={16} color="#94a3b8" />
+            <Text style={styles.hintTextDisabled}>
+              短信通知功能正在开发中，敬请期待
             </Text>
           </View>
         </View>
@@ -510,6 +578,43 @@ const styles = StyleSheet.create({
     width: width - 40,
     height: 200,
   },
+  inputSection: {
+    marginBottom: 12,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  currentBadge: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  currentBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#16a34a',
+  },
+  comingSoonBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 'auto',
+  },
+  comingSoonBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#94a3b8',
+  },
   input: {
     backgroundColor: '#fff',
     borderWidth: 2,
@@ -518,6 +623,20 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     marginBottom: 12,
+  },
+  inputDisabled: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    color: '#94a3b8',
+  },
+  inputError: {
+    borderColor: '#ef4444',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: -8,
+    marginBottom: 8,
   },
   hintBox: {
     borderRadius: 12,
@@ -532,11 +651,25 @@ const styles = StyleSheet.create({
   infoBox: {
     backgroundColor: '#eff6ff',
   },
+  comingSoonHintBox: {
+    backgroundColor: '#f8fafc',
+  },
   hintText: {
     flex: 1,
     fontSize: 12,
     color: '#0f172a',
     lineHeight: 18,
+  },
+  hintTextDisabled: {
+    flex: 1,
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 18,
+  },
+  sectionTitleDisabled: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#94a3b8',
   },
   disclaimerBox: {
     backgroundColor: '#f8fafc',

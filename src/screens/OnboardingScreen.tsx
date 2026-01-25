@@ -27,15 +27,16 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
   const [userPhone, setUserPhone] = useState('');
   const [startTime, setStartTime] = useState('23:00');
   const [endTime, setEndTime] = useState('08:00');
-  const [emergencyContact, setEmergencyContact] = useState('');
+  const [emergencyContact, setEmergencyContact] = useState(''); // 短信功能，即将推出
+  const [emergencyEmail, setEmergencyEmail] = useState(''); // 当前使用邮箱通知
   const [timeValidationError, setTimeValidationError] = useState<string>('');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [activeTimePicker, setActiveTimePicker] = useState<'start' | 'end'>('start');
   const [tempTime, setTempTime] = useState<Date>(new Date());
   const [userPhoneError, setUserPhoneError] = useState<string>('');
-  const [emergencyContactError, setEmergencyContactError] = useState<string>('');
+  const [emergencyEmailError, setEmergencyEmailError] = useState<string>('');
   const [isUserPhoneFormatError, setIsUserPhoneFormatError] = useState<boolean>(false);
-  const [isEmergencyContactFormatError, setIsEmergencyContactFormatError] = useState<boolean>(false);
+  const [isEmergencyEmailFormatError, setIsEmergencyEmailFormatError] = useState<boolean>(false);
 
   // 当时间变化时，自动更新校验状态
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      onComplete({ userPhone, startTime, endTime, emergencyContact });
+      onComplete({ userPhone, startTime, endTime, emergencyContact, emergencyEmail });
     }
   };
 
@@ -68,7 +69,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
       case 2:
         return isTimeRangeValid();
       case 3:
-        return validatePhoneNumber(emergencyContact).valid;
+        // 当前使用邮箱验证（邮箱通知功能）
+        return validateEmail(emergencyEmail).valid;
       default:
         return false;
     }
@@ -94,6 +96,25 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
     if (!phoneRegex.test(phone)) {
       // 格式错误，需要显示红色边框
       return { valid: false, error: '请输入正确的手机号码格式（以1开头，第二位为3-9）', isFormatError: true };
+    }
+    
+    return { valid: true };
+  };
+
+  // 验证邮箱格式
+  const validateEmail = (email: string): { 
+    valid: boolean; 
+    error?: string; 
+    isFormatError?: boolean;
+  } => {
+    if (!email) {
+      return { valid: false, error: '请输入邮箱地址', isFormatError: false };
+    }
+    
+    // 基本邮箱格式验证
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return { valid: false, error: '请输入正确的邮箱格式', isFormatError: true };
     }
     
     return { valid: true };
@@ -358,37 +379,65 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
             <View style={styles.stepContainer}>
               <Text style={styles.stepTitle}>添加信任联系人</Text>
               <Text style={styles.stepDescription}>仅在异常情况下通知此联系人</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  isEmergencyContactFormatError && styles.inputError
-                ]}
-                value={emergencyContact}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/\D/g, '').slice(0, 11);
-                  setEmergencyContact(cleaned);
-                  // 实时验证
-                  if (cleaned.length > 0) {
-                    const validation = validatePhoneNumber(cleaned);
-                    setEmergencyContactError(validation.error || '');
-                    setIsEmergencyContactFormatError(validation.isFormatError || false);
-                  } else {
-                    setEmergencyContactError('');
-                    setIsEmergencyContactFormatError(false);
-                  }
-                }}
-                placeholder="输入联系人手机号"
-                keyboardType="phone-pad"
-                maxLength={11}
-                autoFocus
-              />
-              {emergencyContactError && (
-                <Text style={styles.errorText}>{emergencyContactError}</Text>
-              )}
+              
+              {/* 邮箱输入（当前使用） */}
+              <View style={styles.inputSection}>
+                <View style={styles.inputLabelRow}>
+                  <Text style={styles.inputLabel}>联系人邮箱</Text>
+                  <View style={styles.currentBadge}>
+                    <Text style={styles.currentBadgeText}>当前使用</Text>
+                  </View>
+                </View>
+                <TextInput
+                  style={[
+                    styles.input,
+                    isEmergencyEmailFormatError && styles.inputError
+                  ]}
+                  value={emergencyEmail}
+                  onChangeText={(text) => {
+                    const cleaned = text.trim();
+                    setEmergencyEmail(cleaned);
+                    // 实时验证
+                    if (cleaned.length > 0) {
+                      const validation = validateEmail(cleaned);
+                      setEmergencyEmailError(validation.error || '');
+                      setIsEmergencyEmailFormatError(validation.isFormatError || false);
+                    } else {
+                      setEmergencyEmailError('');
+                      setIsEmergencyEmailFormatError(false);
+                    }
+                  }}
+                  placeholder="输入联系人邮箱地址"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                />
+                {emergencyEmailError && (
+                  <Text style={styles.errorText}>{emergencyEmailError}</Text>
+                )}
+              </View>
+
+              {/* 提示信息 */}
+              <View style={[styles.infoBox, styles.successBox]}>
+                <Ionicons name="mail-outline" size={20} color="#3b82f6" />
+                <Text style={styles.infoText}>
+                  我们仅在检测到异常且你未确认安全时，才会向此联系人发送邮件通知。
+                </Text>
+              </View>
+
+              {/* 短信功能预告 */}
+              <View style={[styles.infoBox, styles.comingSoonBox]}>
+                <Ionicons name="chatbubble-outline" size={20} color="#94a3b8" />
+                <Text style={styles.comingSoonText}>
+                  📱 短信通知功能即将推出，届时可添加手机号接收短信提醒
+                </Text>
+              </View>
+
               <View style={[styles.infoBox, styles.warningBox]}>
                 <Ionicons name="information-circle-outline" size={20} color="#f59e0b" />
                 <Text style={styles.infoText}>
-                  我们仅在检测到异常且你未确认安全时，才会向此联系人发送短信通知。本产品不提供医疗或紧急救援服务。
+                  本产品不提供医疗或紧急救援服务，仅作为安全提醒工具。
                 </Text>
               </View>
             </View>
@@ -564,12 +613,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#e2e8f0',
     marginVertical: 28,
   },
+  inputSection: {
+    marginBottom: 16,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  currentBadge: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  currentBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#16a34a',
+  },
   infoBox: {
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
+    marginBottom: 12,
   },
   warningBox: {
     backgroundColor: '#fef3c7',
@@ -577,10 +652,19 @@ const styles = StyleSheet.create({
   successBox: {
     backgroundColor: '#eff6ff',
   },
+  comingSoonBox: {
+    backgroundColor: '#f1f5f9',
+  },
   infoText: {
     flex: 1,
     fontSize: 14,
     color: '#0f172a',
+    lineHeight: 20,
+  },
+  comingSoonText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#64748b',
     lineHeight: 20,
   },
   button: {

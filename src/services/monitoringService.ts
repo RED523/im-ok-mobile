@@ -2,7 +2,7 @@
 import storage from '../utils/storage';
 import { MonitoringRecord, MonitoringSettings } from '../types';
 import notificationService from './notificationService';
-import smsApiService from './smsApiService';
+import notificationApiService from './smsApiService';
 
 class MonitoringService {
   private static instance: MonitoringService;
@@ -213,7 +213,8 @@ class MonitoringService {
       userPhone: saved.userPhone,
       startTime: saved.startTime,
       endTime: saved.endTime,
-      emergencyContact: saved.emergencyContact,
+      emergencyContact: saved.emergencyContact || '', // 短信功能，即将推出
+      emergencyEmail: saved.emergencyEmail || '', // 当前使用邮箱通知
       notificationDelay: 30, // 默认 30 秒（测试用）
     };
   }
@@ -368,6 +369,18 @@ class MonitoringService {
     
     // 【关键】首先检查是否有待处理的异常提醒（后台通知场景）
     // 这是为了处理应用在后台或被杀死时，定时通知已发送的情况
+    const pendingAlert = await storage.getItem<{
+      scheduledTime: number;
+      dateKey: string;
+      handled: boolean;
+    }>('pendingAbnormalAlert');
+    
+    // 如果存在待处理提醒但已被处理，直接返回 false，不再检查其他条件
+    if (pendingAlert && pendingAlert.handled) {
+      console.log('  ✅ 待处理提醒已被处理，不再显示弹框');
+      return false;
+    }
+    
     const hasPendingAlert = await this.hasPendingAbnormalAlertToShow();
     if (hasPendingAlert) {
       console.log('  ⚠️ 检测到待处理的异常提醒（后台通知已触发）');
@@ -479,7 +492,20 @@ class MonitoringService {
     }
 
     // 如果已经在监测时段内，但已标记为异常，也需要显示弹框
+    // 但是，如果 pendingAbnormalAlert 已被处理，说明邮件已发送且弹框已关闭，不再显示
     if (record.isAbnormal) {
+      // 再次检查 pendingAbnormalAlert 是否已被处理
+      const pendingAlert = await storage.getItem<{
+        scheduledTime: number;
+        dateKey: string;
+        handled: boolean;
+      }>('pendingAbnormalAlert');
+      
+      if (pendingAlert && pendingAlert.handled) {
+        console.log('  ✅ 异常已处理（邮件已发送），不再显示弹框');
+        return false;
+      }
+      
       console.log('  ⚠️ 检测到未处理的异常状态（已标记为异常）');
       
       // 确保有通知时间戳
@@ -760,15 +786,15 @@ class MonitoringService {
       console.log(`  📅 已设置定时通知: ${Math.floor(secondsUntilEnd / 60)}分钟后发送`);
     }
 
-    // 【关键】同时调用后端 API 安排短信发送
-    // 短信会在监测时段结束 + 倒计时延迟后由服务器自动发送
-    const smsDelaySeconds = secondsUntilEnd + settings.notificationDelay;
-    const taskId = await smsApiService.scheduleSMS(settings, smsDelaySeconds);
+    // 【关键】同时调用后端 API 安排邮件发送（当前使用邮件通知）
+    // 邮件会在监测时段结束 + 倒计时延迟后由服务器自动发送
+    const emailDelaySeconds = secondsUntilEnd + settings.notificationDelay;
+    const taskId = await notificationApiService.scheduleEmail(settings, emailDelaySeconds);
     
     if (taskId) {
-      this.serverSmsTaskId = taskId;
+      this.serverSmsTaskId = taskId; // 保持字段名兼容
       await storage.setItem('serverSmsTaskId', taskId);
-      console.log(`  📧 已安排后端短信任务: ${Math.floor(smsDelaySeconds / 60)}分钟后发送`);
+      console.log(`  📧 已安排后端邮件任务: ${Math.floor(emailDelaySeconds / 60)}分钟后发送`);
     }
   }
 
@@ -869,7 +895,7 @@ class MonitoringService {
   }
 
   /**
-   * 取消后端短信任务
+   * 取消后端通知任务（邮件/短信）
    */
   async cancelServerSmsTask(): Promise<void> {
     // 先尝试从内存获取
@@ -881,10 +907,11 @@ class MonitoringService {
     }
     
     if (taskId) {
-      await smsApiService.cancelSMS(taskId);
+      // 使用通用的取消方法，自动识别任务类型
+      await notificationApiService.cancelNotification(taskId);
       this.serverSmsTaskId = null;
       await storage.removeItem('serverSmsTaskId');
-      console.log('  🚫 已取消后端短信任务');
+      console.log('  🚫 已取消后端通知任务');
     }
   }
 

@@ -20,7 +20,8 @@ export default function App() {
     userPhone: '',
     startTime: '23:00',
     endTime: '08:00',
-    emergencyContact: '',
+    emergencyContact: '', // 短信功能，即将推出
+    emergencyEmail: '', // 当前使用邮箱通知
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -179,6 +180,7 @@ export default function App() {
     await storage.setItem('safetyMonitorSettings', newSettings);
     await monitoringService.saveSettings({
       ...newSettings,
+      emergencyEmail: newSettings.emergencyEmail || '', // 确保邮箱字段存在
       notificationDelay: 30,
     });
 
@@ -221,7 +223,8 @@ export default function App() {
       userPhone: '',
       startTime: '23:00',
       endTime: '08:00',
-      emergencyContact: '',
+      emergencyContact: '', // 短信功能，即将推出
+      emergencyEmail: '', // 当前使用邮箱通知
     });
   };
 
@@ -290,10 +293,19 @@ export default function App() {
     console.log('✅ 用户确认安全后，已记录活动并清除所有通知相关标记');
   }, []);
 
-  const handleCloseAlert = useCallback(() => {
-    // 纯粹关闭弹框，不改变任何状态（用于倒计时结束后自动关闭）
+  const handleCloseAlert = useCallback(async () => {
+    // 倒计时结束后关闭弹框（邮件已发送）
     setShowAlert(false);
-    console.log('🔕 弹框已关闭（短信已发送111）');
+    
+    // 【关键】标记待处理的异常提醒为已处理，避免重复弹出
+    await monitoringService.markPendingAbnormalAlertAsHandled();
+    
+    // 清除通知相关标记
+    await storage.removeItem('notificationSentToday');
+    await storage.removeItem('notificationSentTime');
+    await storage.removeItem('scheduledNotificationTime');
+    
+    console.log('🔕 弹框已关闭（邮件已发送，状态已标记为已处理）');
   }, []);
 
   // 应用完全加载后，检查是否有未处理的异常
