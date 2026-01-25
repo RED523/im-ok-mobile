@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -22,7 +22,6 @@ export default function App() {
     endTime: '08:00',
     emergencyContact: '',
   });
-  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // 初始化：从存储加载设置并启动监测
@@ -212,12 +211,6 @@ export default function App() {
     await storage.removeItem('safetyMonitorSettings');
     await monitoringService.clearAllData();
 
-    // 取消待发送的通知
-    if (notificationTimerRef.current) {
-      clearTimeout(notificationTimerRef.current);
-      notificationTimerRef.current = null;
-    }
-
     // 停止活动追踪
     activityTracker.stop();
 
@@ -256,6 +249,7 @@ export default function App() {
       }
     } else {
       // 没有预期时间，使用当前时间
+      
       notificationTime = Date.now();
       console.log(`⏰ [handleAbnormalAlert] 无预期时间，使用当前时间: ${new Date(notificationTime).toLocaleTimeString()}`);
     }
@@ -266,36 +260,20 @@ export default function App() {
     // 然后显示弹框
     setShowAlert(true);
 
-    // 发送本地通知
+    // 发送本地通知（提醒用户）
     await notificationService.sendImmediateNotification(
       '⚠️ 安全确认提醒',
       '在监测时段内未检测到使用记录，请确认安全'
     );
 
-    // 设置延迟通知（5分钟后）
-    const monitorSettings = await monitoringService.getSettings();
-    if (!monitorSettings) return;
-
-    notificationTimerRef.current = setTimeout(async () => {
-      // 检查用户是否已经确认
-      const record = await monitoringService.getTodayRecord();
-      if (record && !record.userConfirmed) {
-        // 发送通知
-        await monitoringService.sendNotification(monitorSettings);
-      }
-    }, monitorSettings.notificationDelay * 1000);
+    // 注意：短信发送已由后端服务处理（在 monitoringService.scheduleEndTimeNotification 中安排）
+    // 不再需要本地 setTimeout，避免重复发送
   };
 
   const handleConfirmSafe = useCallback(async () => {
     setShowAlert(false);
 
-    // 取消待发送的通知
-    if (notificationTimerRef.current) {
-      clearTimeout(notificationTimerRef.current);
-      notificationTimerRef.current = null;
-    }
-
-    // 记录用户确认（内部会标记 pendingAbnormalAlert 为已处理）
+    // 记录用户确认（内部会标记 pendingAbnormalAlert 为已处理，并取消后端短信任务）
     await monitoringService.confirmSafe();
     
     // 用户确认后，记录一次活动（表示用户现在有活动了）
@@ -315,7 +293,7 @@ export default function App() {
   const handleCloseAlert = useCallback(() => {
     // 纯粹关闭弹框，不改变任何状态（用于倒计时结束后自动关闭）
     setShowAlert(false);
-    console.log('🔕 弹框已关闭（短信已发送）');
+    console.log('🔕 弹框已关闭（短信已发送111）');
   }, []);
 
   // 应用完全加载后，检查是否有未处理的异常

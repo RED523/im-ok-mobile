@@ -2,6 +2,7 @@
 import storage from '../utils/storage';
 import { MonitoringRecord, MonitoringSettings } from '../types';
 import notificationService from './notificationService';
+import smsApiService from './smsApiService';
 
 class MonitoringService {
   private static instance: MonitoringService;
@@ -10,6 +11,7 @@ class MonitoringService {
   private hasTriggeredToday: boolean = false; // 防止重复触发
   private onAbnormalCallback: (() => void) | null = null;
   private scheduledNotificationId: string | null = null; // 定时通知 ID
+  private serverSmsTaskId: string | null = null; // 后端短信任务 ID
 
   private constructor() {
     // React Native 版本不需要浏览器事件监听
@@ -54,6 +56,9 @@ class MonitoringService {
           this.scheduledNotificationId = null;
           console.log('🚫 已取消定时通知（用户有活动）');
         }
+        
+        // 【关键】取消后端短信任务（用户有活动，不需要发送短信）
+        await this.cancelServerSmsTask();
         
         // 清除待处理的异常提醒（因为用户有活动，通知不需要了）
         await this.clearPendingAbnormalAlert();
@@ -184,6 +189,7 @@ class MonitoringService {
     await storage.removeItem('notificationSentToday');
     await storage.removeItem('notificationSentTime');
     await storage.removeItem('scheduledNotificationTime');
+    await storage.removeItem('serverSmsTaskId');
     
     // 清除待处理的异常提醒状态
     await this.clearPendingAbnormalAlert();
@@ -609,6 +615,9 @@ class MonitoringService {
     
     // 【关键】标记待处理的异常提醒为已处理
     await this.markPendingAbnormalAlertAsHandled();
+    
+    // 【关键】取消后端短信任务（用户已确认，不需要发送短信）
+    await this.cancelServerSmsTask();
   }
 
   /**
@@ -739,7 +748,7 @@ class MonitoringService {
       console.log(`  ⚠️ 时段已结束，不保存预期通知时间（避免保存下一个周期的时间）`);
     }
 
-    // 设置定时通知
+    // 设置定时通知（本地通知，用于提醒用户）
     const notificationId = await notificationService.scheduleNotification(
       '⚠️ 安全确认提醒',
       `在监测时段 ${settings.startTime} - ${settings.endTime} 内未检测到活动记录，请确认你的安全状态`,
@@ -749,6 +758,17 @@ class MonitoringService {
     if (notificationId) {
       this.scheduledNotificationId = notificationId;
       console.log(`  📅 已设置定时通知: ${Math.floor(secondsUntilEnd / 60)}分钟后发送`);
+    }
+
+    // 【关键】同时调用后端 API 安排短信发送
+    // 短信会在监测时段结束 + 倒计时延迟后由服务器自动发送
+    const smsDelaySeconds = secondsUntilEnd + settings.notificationDelay;
+    const taskId = await smsApiService.scheduleSMS(settings, smsDelaySeconds);
+    
+    if (taskId) {
+      this.serverSmsTaskId = taskId;
+      await storage.setItem('serverSmsTaskId', taskId);
+      console.log(`  📧 已安排后端短信任务: ${Math.floor(smsDelaySeconds / 60)}分钟后发送`);
     }
   }
 
@@ -843,6 +863,29 @@ class MonitoringService {
       this.scheduledNotificationId = null;
       console.log('  🚫 已取消定时通知');
     }
+    
+    // 同时取消后端短信任务
+    await this.cancelServerSmsTask();
+  }
+
+  /**
+   * 取消后端短信任务
+   */
+  async cancelServerSmsTask(): Promise<void> {
+    // 先尝试从内存获取
+    let taskId = this.serverSmsTaskId;
+    
+    // 如果内存中没有，从存储获取
+    if (!taskId) {
+      taskId = await storage.getItem<string>('serverSmsTaskId');
+    }
+    
+    if (taskId) {
+      await smsApiService.cancelSMS(taskId);
+      this.serverSmsTaskId = null;
+      await storage.removeItem('serverSmsTaskId');
+      console.log('  🚫 已取消后端短信任务');
+    }
   }
 
   // ============ 数据清理 ============
@@ -859,6 +902,7 @@ class MonitoringService {
     await storage.removeItem('scheduledNotificationTime');
     await storage.removeItem('lastNotificationDate');
     await storage.removeItem('pendingAbnormalAlert');
+    await storage.removeItem('serverSmsTaskId');
     
     // 取消所有通知
     await this.cancelScheduledNotification();

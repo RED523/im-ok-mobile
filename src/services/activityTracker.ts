@@ -21,9 +21,8 @@ class ActivityTracker {
       this.onAbnormalCheckCallback = onAbnormalCheck;
     }
     
-    // 【修改】不在启动时自动记录活动，避免在测试时立即产生使用记录
-    // 只有当应用从后台回到前台时，才记录活动
-    // await monitoringService.recordActivity();
+    // 记录启动时的活动
+    await monitoringService.recordActivity();
     this.lastActivityTime = new Date();
     
     // 监听 App 状态变化
