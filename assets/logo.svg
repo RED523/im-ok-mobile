@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="256" cy="256" r="240" fill="#10B981"/>
+  
+  <!-- 内圈 -->
+  <circle cx="256" cy="256" r="200" fill="#059669"/>
+  
+  <!-- OK 手势 / 勾选符号 -->
+  <path d="M180 260 L230 310 L340 180" stroke="white" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  
+  <!-- 心跳线条装饰 -->
+  <path d="M120 380 L160 380 L180 350 L200 410 L220 360 L240 380 L400 380" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.6"/>
+</svg>
+
