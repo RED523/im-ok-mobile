@@ -37,6 +37,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
   const [emergencyEmailError, setEmergencyEmailError] = useState<string>('');
   const [isUserPhoneFormatError, setIsUserPhoneFormatError] = useState<boolean>(false);
   const [isEmergencyEmailFormatError, setIsEmergencyEmailFormatError] = useState<boolean>(false);
+  const [agreedToDisclaimer, setAgreedToDisclaimer] = useState<boolean>(false);
 
   // 当时间变化时，自动更新校验状态
   useEffect(() => {
@@ -69,8 +70,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
       case 2:
         return isTimeRangeValid();
       case 3:
-        // 当前使用邮箱验证（邮箱通知功能）
-        return validateEmail(emergencyEmail).valid;
+        // 当前使用邮箱验证（邮箱通知功能）+ 必须勾选免责声明
+        return validateEmail(emergencyEmail).valid && agreedToDisclaimer;
       default:
         return false;
     }
@@ -437,9 +438,25 @@ export default function OnboardingScreen({ onComplete }: OnboardingProps) {
               <View style={[styles.infoBox, styles.warningBox]}>
                 <Ionicons name="information-circle-outline" size={20} color="#f59e0b" />
                 <Text style={styles.infoText}>
-                  本产品不提供医疗或紧急救援服务，仅作为安全提醒工具。
+                  本产品不提供医疗或紧急救援服务，仅作为安全提醒工具。监测功能可能因系统限制、网络问题或用户设置不当而失效，不保证100%准确。用户需自行承担使用风险，如遇紧急情况请拨打紧急电话。
                 </Text>
               </View>
+
+              {/* 免责声明勾选框 */}
+              <TouchableOpacity
+                style={styles.checkboxContainer}
+                onPress={() => setAgreedToDisclaimer(!agreedToDisclaimer)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, agreedToDisclaimer && styles.checkboxChecked]}>
+                  {agreedToDisclaimer && (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+                <Text style={styles.checkboxLabel}>
+                  我已阅读并理解上述免责声明，同意自行承担使用风险
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -665,6 +682,34 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#64748b',
+    lineHeight: 20,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  checkboxLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0f172a',
     lineHeight: 20,
   },
   button: {

@@ -85,9 +85,17 @@ async function sendEmail(email, subject, message) {
                   💡 建议：请尝试通过电话或其他方式联系 TA 确认情况。
                 </p>
               </div>
+              <div style="background: #f1f5f9; border-radius: 8px; padding: 15px; margin-top: 20px; border-left: 3px solid #94a3b8;">
+                <p style="color: #64748b; font-size: 11px; margin: 0 0 8px 0; font-weight: 600;">
+                  免责声明：
+                </p>
+                <p style="color: #64748b; font-size: 11px; margin: 0; line-height: 1.5;">
+                  本应用仅作为辅助提醒工具，不提供医疗、紧急救援或安全保障服务。监测功能可能因系统限制、网络问题或用户设置不当而失效，不保证100%准确或及时。用户需自行承担使用风险，如遇紧急情况，请立即拨打紧急电话（110/120/119）寻求专业帮助。
+                </p>
+              </div>
             </div>
             <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 20px;">
-              此邮件由「我还好」安全守护应用自动发送
+              此邮件由「im-ok」安全守护应用自动发送
             </p>
           </div>
         `,
@@ -489,7 +497,7 @@ app.listen(PORT, () => {
   const emailConfigured = !!mailTransporter;
   console.log(`
 ====================================
-🚀 安全监测后端服务已启动
+🚀 im-ok 后端服务已启动
 ====================================
 端口: ${PORT}
 地址: http://localhost:${PORT}

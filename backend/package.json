@@ -1,7 +1,7 @@
 {
   "name": "im-ok-backend",
   "version": "1.0.0",
-  "description": "安全监测后端服务 - 处理定时邮件/短信发送",
+  "description": "im-ok 后端服务 - 处理定时邮件/短信发送",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
